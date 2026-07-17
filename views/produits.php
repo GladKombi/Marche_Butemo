@@ -16,8 +16,8 @@ if (!isset($_SESSION['is_logged_in']) || $_SESSION['is_logged_in'] !== true) {
     exit;
 }
 
-// Vérification admin - Seul l'administrateur peut accéder à cette page
-if ($_SESSION['user_type'] !== 'admin') {
+// Administrateurs et agriculteurs peuvent gérer les produits.
+if (!in_array($_SESSION['user_type'], ['admin', 'agriculteur'], true)) {
     header('Location: dashboard.php');
     exit;
 }
@@ -37,28 +37,37 @@ $user_photo = $_SESSION['user_photo'] ?? null;
 $userInitials = strtoupper(substr($user_nom, 0, 1) . substr($user_prenom, 0, 1));
 
 // Définir le rôle
-$role_label = 'Administrateur';
-$role_color = 'danger';
+$role_label = $user_type === 'admin' ? 'Administrateur' : 'Agriculteur';
+$role_color = $user_type === 'admin' ? 'danger' : 'success';
 
 // Récupération des données
 try {
     $pdo = getDBConnection();
     
-    // Récupérer tous les produits
-    $produits = ProduitSelect::getAll();
-    
     // Récupérer toutes les catégories
     $categories = CategorieSelect::getAll();
-    $agriculteurs = fetchAll("SELECT CASE WHEN a.id IS NULL THEN -u.id ELSE a.id END AS selection_id,
+    $agriculteurProfil = null;
+    if ($user_type === 'agriculteur') {
+        $agriculteurProfil = fetchOne('SELECT id FROM agriculteurs WHERE utilisateur_id = :id AND supprime = 0', [':id' => $user_id]);
+        if (!$agriculteurProfil) {
+            $profilId = executeInsert('INSERT INTO agriculteurs (utilisateur_id, supprime) VALUES (:id, 0)', [':id' => $user_id]);
+            $agriculteurProfil = $profilId ? (object) ['id' => $profilId] : null;
+        }
+        $produits = $agriculteurProfil ? ProduitSelect::getByAgriculteur($agriculteurProfil->id) : [];
+        $agriculteurs = [];
+    } else {
+        $produits = ProduitSelect::getAll();
+        $agriculteurs = fetchAll("SELECT CASE WHEN a.id IS NULL THEN -u.id ELSE a.id END AS selection_id,
             u.nom, u.prenom, a.raison_sociale
         FROM utilisateurs u
         LEFT JOIN agriculteurs a ON a.utilisateur_id = u.id AND a.supprime = 0
         WHERE u.type_utilisateur = 'agriculteur' AND u.supprime = 0
         ORDER BY u.nom, u.prenom");
+    }
     
     // Récupérer les statistiques
     $stats = [
-        'total_produits' => ProduitSelect::countAll(),
+        'total_produits' => count($produits),
         'total_categories' => count($categories),
         'produits_disponibles' => 0,
         'produits_en_rupture' => 0
@@ -1080,8 +1089,10 @@ function getProduitImages($value) {
             <!-- Breadcrumbs -->
             <nav class="breadcrumbs" id="breadcrumbs">
                 <button class="breadcrumb-item active" data-view="produits">Produits</button>
-                <span class="breadcrumb-separator">›</span>
-                <button class="breadcrumb-item" data-view="categories">Catégories</button>
+                <?php if ($user_type === 'admin'): ?>
+                    <span class="breadcrumb-separator">›</span>
+                    <button class="breadcrumb-item" data-view="categories">Catégories</button>
+                <?php endif; ?>
             </nav>
 
             <!-- Stats -->
@@ -1314,15 +1325,19 @@ function getProduitImages($value) {
                     <textarea class="form-textarea" id="produit_description" name="description" placeholder="Description du produit..."></textarea>
                 </div>
 
-                <div class="form-group">
-                    <label class="form-label" for="produit_agriculteur">Agriculteur *</label>
-                    <select class="form-select" id="produit_agriculteur" name="agriculteur_id" required>
-                        <option value="">Sélectionner un agriculteur</option>
-                        <?php foreach ($agriculteurs as $a): ?>
-                            <option value="<?= $a->selection_id ?>"><?= htmlspecialchars(trim(($a->prenom ?? '') . ' ' . ($a->nom ?? '')) . (!empty($a->raison_sociale) ? ' — ' . $a->raison_sociale : '')) ?></option>
-                        <?php endforeach; ?>
-                    </select>
-                </div>
+                <?php if ($user_type === 'admin'): ?>
+                    <div class="form-group">
+                        <label class="form-label" for="produit_agriculteur">Agriculteur *</label>
+                        <select class="form-select" id="produit_agriculteur" name="agriculteur_id" required>
+                            <option value="">Sélectionner un agriculteur</option>
+                            <?php foreach ($agriculteurs as $a): ?>
+                                <option value="<?= $a->selection_id ?>"><?= htmlspecialchars(trim(($a->prenom ?? '') . ' ' . ($a->nom ?? '')) . (!empty($a->raison_sociale) ? ' — ' . $a->raison_sociale : '')) ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                <?php else: ?>
+                    <input type="hidden" id="produit_agriculteur" name="agriculteur_id" value="<?= (int) ($agriculteurProfil->id ?? 0) ?>">
+                <?php endif; ?>
 
                 <div class="form-row">
                     <div class="form-group">

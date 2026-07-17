@@ -98,9 +98,18 @@ class CommandeSelect
      */
     public static function getByAcheteur($acheteurId, $limit = null)
     {
-        $sql = "SELECT 
-                    c.*,
-                    COUNT(lc.id) as nb_produits
+        $sql = "SELECT c.*,
+                    COUNT(lc.id) AS nb_produits,
+                    COALESCE(SUM(lc.quantite), 0) AS quantite_totale,
+                    (SELECT d.adresse_livraison FROM details_livraison d WHERE d.id_commande = c.id AND d.supprime = 0 ORDER BY d.id DESC LIMIT 1) AS adresse_livraison,
+                    (SELECT d.instructions_specifiques FROM details_livraison d WHERE d.id_commande = c.id AND d.supprime = 0 ORDER BY d.id DESC LIMIT 1) AS instructions_livraison,
+                    (SELECT p.mode_paiement FROM paiements p WHERE p.commande_id = c.id AND p.supprime = 0 ORDER BY p.id DESC LIMIT 1) AS mode_paiement,
+                    (SELECT l.code_suivi FROM livraisons l WHERE l.commande_id = c.id AND l.supprime = 0 ORDER BY l.id DESC LIMIT 1) AS code_suivi,
+                    CASE WHEN c.date_annulation IS NOT NULL THEN 'annulee'
+                         WHEN EXISTS (SELECT 1 FROM livraisons l WHERE l.commande_id = c.id AND l.supprime = 0 AND l.statut_livraison = 'terminee') THEN 'livree'
+                         WHEN EXISTS (SELECT 1 FROM livraisons l WHERE l.commande_id = c.id AND l.supprime = 0 AND l.statut_livraison = 'en_cours') THEN 'en_livraison'
+                         ELSE 'en_attente' END AS statut_commande,
+                    CASE WHEN EXISTS (SELECT 1 FROM paiements p WHERE p.commande_id = c.id AND p.supprime = 0 AND p.date_paiement IS NOT NULL) THEN 'paye' ELSE 'en_attente' END AS statut_paiement
                 FROM commandes c
                 LEFT JOIN ligne_commandes lc ON c.id = lc.commande_id AND lc.supprime = 0
                 WHERE c.acheteur_id = :acheteur_id AND c.supprime = 0
@@ -115,6 +124,34 @@ class CommandeSelect
         }
 
         return fetchAll($sql, $params);
+    }
+
+    /**
+     * Commandes contenant au moins un produit de l'utilisateur agriculteur.
+     */
+    public static function getByAgriculteur($utilisateurId)
+    {
+        $sql = "SELECT lc.commande_id,
+                    SUM(lc.quantite * lc.prix_unitaire) AS montant_agriculteur,
+                    COUNT(lc.id) AS nb_produits_agriculteur
+                FROM ligne_commandes lc
+                JOIN produits p ON p.id = lc.produit_id AND p.supprime = 0
+                JOIN agriculteurs a ON a.id = p.agriculteur_id AND a.supprime = 0
+                JOIN commandes c ON c.id = lc.commande_id AND c.supprime = 0
+                WHERE a.utilisateur_id = :utilisateur_id AND lc.supprime = 0
+                GROUP BY lc.commande_id";
+        $ownedRows = fetchAll($sql, [':utilisateur_id' => (int) $utilisateurId]);
+        $owned = [];
+        foreach ($ownedRows as $row) $owned[(int) $row->commande_id] = $row;
+
+        $result = [];
+        foreach (self::getAll() as $commande) {
+            if (!isset($owned[(int) $commande->id])) continue;
+            $commande->montant_agriculteur = (float) $owned[(int) $commande->id]->montant_agriculteur;
+            $commande->nb_produits_agriculteur = (int) $owned[(int) $commande->id]->nb_produits_agriculteur;
+            $result[] = $commande;
+        }
+        return $result;
     }
 
     /**

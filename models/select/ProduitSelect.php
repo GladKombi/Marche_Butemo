@@ -102,6 +102,17 @@ class ProduitSelect
         return fetchAll($sql, [':agriculteur_id' => $agriculteurId]);
     }
 
+    public static function getByUtilisateurAgriculteur($utilisateurId)
+    {
+        $sql = "SELECT p.*, c.nom AS categorie_nom
+                FROM produits p
+                JOIN agriculteurs a ON a.id = p.agriculteur_id AND a.supprime = 0
+                JOIN categories c ON c.id = p.categorie_id AND c.supprime = 0
+                WHERE a.utilisateur_id = :utilisateur_id AND p.supprime = 0
+                ORDER BY p.date_creation DESC";
+        return fetchAll($sql, [':utilisateur_id' => (int) $utilisateurId]);
+    }
+
     /**
      * Rechercher des produits
      */

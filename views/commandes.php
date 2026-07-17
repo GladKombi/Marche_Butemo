@@ -14,7 +14,7 @@ if (!isset($_SESSION['is_logged_in']) || $_SESSION['is_logged_in'] !== true) {
     exit;
 }
 
-if ($_SESSION['user_type'] !== 'admin') {
+if (!in_array($_SESSION['user_type'], ['admin', 'agriculteur'], true)) {
     header('Location: dashboard.php');
     exit;
 }
@@ -30,25 +30,27 @@ $user_type = $_SESSION['user_type'];
 $user_photo = $_SESSION['user_photo'] ?? null;
 $userInitials = strtoupper(substr($user_nom, 0, 1) . substr($user_prenom, 0, 1));
 
-$role_label = 'Administrateur';
-$role_color = 'danger';
+$role_label = $user_type === 'admin' ? 'Administrateur' : 'Agriculteur';
+$role_color = $user_type === 'admin' ? 'danger' : 'success';
 
 try {
     $pdo = getDBConnection();
 
-    $commandes = CommandeSelect::getAll();
-
-    $stats = [
-        'total' => CommandeSelect::countAll(),
-        'en_attente' => CommandeSelect::countByStatus('en_attente'),
-        'en_livraison' => CommandeSelect::countByStatus('en_livraison'),
-        'livrees' => CommandeSelect::countByStatus('livree'),
-        'annulees' => CommandeSelect::countByStatus('annulee'),
-        'ca_mois' => CommandeSelect::getTotalVentes('month')
-    ];
+    $commandes = $user_type === 'admin' ? CommandeSelect::getAll() : CommandeSelect::getByAgriculteur($user_id);
+    $stats = ['total' => count($commandes), 'en_attente' => 0, 'en_livraison' => 0, 'livrees' => 0, 'annulees' => 0, 'ca_mois' => 0];
+    foreach ($commandes as $commande) {
+        $statut = $commande->statut_commande ?? 'en_attente';
+        if ($statut === 'en_attente') $stats['en_attente']++;
+        elseif ($statut === 'en_livraison') $stats['en_livraison']++;
+        elseif ($statut === 'livree') $stats['livrees']++;
+        elseif ($statut === 'annulee') $stats['annulees']++;
+        $stats['ca_mois'] += $user_type === 'admin' ? (float) $commande->montant_total : (float) ($commande->montant_agriculteur ?? 0);
+    }
+    $livreurs = fetchAll("SELECT id, nom, prenom, telephone FROM utilisateurs WHERE type_utilisateur = 'livreur' AND statut = 'actif' AND supprime = 0 ORDER BY nom, prenom");
 } catch (PDOException $e) {
     error_log("Erreur: " . $e->getMessage());
     $commandes = [];
+    $livreurs = [];
     $stats = ['total' => 0, 'en_attente' => 0, 'en_livraison' => 0, 'livrees' => 0, 'annulees' => 0, 'ca_mois' => 0];
 }
 
@@ -779,9 +781,11 @@ unset($_SESSION['toast']);
                     <i class="bi bi-search"></i>
                     <input type="text" class="search-input" id="tableSearch" placeholder="Rechercher une commande..." onkeyup="filterTable()">
                 </div>
-                <a href="commande-ajout.php" class="btn btn-primary">
-                    <i class="bi bi-plus-circle"></i> Nouvelle commande
-                </a>
+                <?php if ($user_type === 'admin'): ?>
+                    <a href="commande-ajout.php" class="btn btn-primary">
+                        <i class="bi bi-plus-circle"></i> Nouvelle commande
+                    </a>
+                <?php endif; ?>
             </div>
 
             <!-- Tableau -->
@@ -815,16 +819,26 @@ unset($_SESSION['toast']);
                                         <td><span class="numero-commande">#<?= htmlspecialchars($c->numero_commande ?? 'N/A') ?></span></td>
                                         <td><?= htmlspecialchars(($c->acheteur_prenom ?? '') . ' ' . ($c->acheteur_nom ?? '')) ?></td>
                                         <td><?= date('d/m/Y H:i', strtotime($c->date_commande ?? '')) ?></td>
-                                        <td style="font-weight:600;"><?= number_format($c->montant_total ?? 0, 0, ',', ' ') ?> FC</td>
+                                        <td style="font-weight:600;"><?= number_format($user_type === 'agriculteur' ? ($c->montant_agriculteur ?? 0) : ($c->montant_total ?? 0), 0, ',', ' ') ?> FC</td>
                                         <td><span class="badge badge-<?= $s['color'] ?>"><?= $s['label'] ?></span></td>
                                         <td>
                                             <div style="display:flex; gap:0.3rem;">
                                                 <button class="action-btn" onclick="viewCommande(<?= $c->id ?>)" title="Voir">
                                                     <i class="bi bi-eye"></i>
                                                 </button>
-                                                <button class="action-btn delete" onclick="confirmDelete(<?= $c->id ?>, '<?= addslashes($c->numero_commande ?? '') ?>')" title="Supprimer">
-                                                    <i class="bi bi-trash"></i>
-                                                </button>
+                                                <?php if ($statut === 'en_attente'): ?>
+                                                    <button type="button" class="action-btn assign-delivery-trigger"
+                                                        data-commande-id="<?= (int) $c->id ?>"
+                                                        data-commande-numero="<?= htmlspecialchars($c->numero_commande ?? '', ENT_QUOTES, 'UTF-8') ?>"
+                                                        title="Assigner un livreur" aria-label="Assigner un livreur">
+                                                        <i class="bi bi-truck"></i>
+                                                    </button>
+                                                <?php endif; ?>
+                                                <?php if ($user_type === 'admin'): ?>
+                                                    <button class="action-btn delete" onclick="confirmDelete(<?= $c->id ?>, '<?= addslashes($c->numero_commande ?? '') ?>')" title="Supprimer">
+                                                        <i class="bi bi-trash"></i>
+                                                    </button>
+                                                <?php endif; ?>
                                             </div>
                                         </td>
                                     </tr>
@@ -857,6 +871,27 @@ unset($_SESSION['toast']);
                 <button type="button" class="details-modal-close" onclick="closeCommandeModal()" aria-label="Fermer">&times;</button>
             </div>
             <div class="details-modal-body" id="commandeDetailsBody"><div class="details-loading">Chargement…</div></div>
+        </div>
+    </div>
+
+    <div class="details-modal-overlay" id="assignDeliveryModal" aria-hidden="true">
+        <div class="details-modal" style="max-width:480px" role="dialog" aria-modal="true" aria-labelledby="assignDeliveryTitle">
+            <div class="details-modal-header">
+                <h3 class="page-title mb-0" id="assignDeliveryTitle">Assigner un livreur</h3>
+                <button type="button" class="details-modal-close" onclick="closeAssignModal()" aria-label="Fermer">&times;</button>
+            </div>
+            <form class="details-modal-body" id="assignDeliveryForm">
+                <input type="hidden" id="assignCommandeId">
+                <label class="form-label fw-semibold" for="assignLivreurId">Livreur disponible</label>
+                <select class="form-select mb-3" id="assignLivreurId">
+                    <option value="">Sélectionner un livreur</option>
+                    <?php foreach ($livreurs as $livreur): ?>
+                        <option value="<?= (int) $livreur->id ?>"><?= htmlspecialchars(($livreur->prenom ?? '') . ' ' . ($livreur->nom ?? '') . ' — ' . ($livreur->telephone ?? '')) ?></option>
+                    <?php endforeach; ?>
+                </select>
+                <div class="alert d-none" id="assignMessage"></div>
+                <button type="submit" class="btn btn-primary w-100" id="assignDeliveryBtn"><i class="bi bi-truck me-2"></i>Confirmer l’assignation</button>
+            </form>
         </div>
     </div>
 
@@ -937,6 +972,74 @@ unset($_SESSION['toast']);
                 '<div class="details-box"><div class="details-box-label">Livraison</div><div>' + escapeHtml(c.adresse_livraison || 'Non renseignée') + '</div><small>' + escapeHtml(c.instructions_specifiques || 'Aucune instruction') + '</small></div>' +
                 '<div class="details-box"><div class="details-box-label">Total</div><strong style="font-size:1.2rem">' + Number(c.montant_total).toLocaleString('fr-FR') + ' FC</strong><div>' + escapeHtml(c.mode_paiement || 'Mode non renseigné') + '</div></div>' +
                 '</div><h5 class="fw-bold mb-3">Produits</h5><div class="table-responsive"><table class="details-products"><thead><tr><th>Produit</th><th>Quantité</th><th>Prix</th><th>Total</th></tr></thead><tbody>' + (rows || '<tr><td colspan="4">Aucun produit</td></tr>') + '</tbody></table></div>';
+        }
+
+        function openAssignModal(id, numero) {
+            const modal = document.getElementById('assignDeliveryModal');
+            document.getElementById('assignCommandeId').value = String(id);
+            document.getElementById('assignLivreurId').value = '';
+            document.getElementById('assignMessage').className = 'alert d-none';
+            document.getElementById('assignDeliveryTitle').textContent = 'Assigner #' + numero;
+            modal.classList.add('active');
+            modal.setAttribute('aria-hidden', 'false');
+            document.body.style.overflow = 'hidden';
+        }
+
+        function closeAssignModal() {
+            const modal = document.getElementById('assignDeliveryModal');
+            modal.classList.remove('active');
+            modal.setAttribute('aria-hidden', 'true');
+            document.body.style.overflow = '';
+        }
+
+        document.getElementById('tbody-commandes').addEventListener('click', function(event) {
+            const button = event.target.closest('.assign-delivery-trigger');
+            if (!button) return;
+            event.preventDefault();
+            event.stopPropagation();
+            openAssignModal(button.dataset.commandeId, button.dataset.commandeNumero || '');
+        });
+
+        document.getElementById('assignDeliveryModal').addEventListener('click', function(event) {
+            if (event.target === this) closeAssignModal();
+        });
+
+        document.getElementById('assignDeliveryForm').addEventListener('submit', assignDelivery);
+
+        async function assignDelivery(event) {
+            event.preventDefault();
+            const commandeId = parseInt(document.getElementById('assignCommandeId').value);
+            const livreurId = parseInt(document.getElementById('assignLivreurId').value);
+            const message = document.getElementById('assignMessage');
+            const button = document.getElementById('assignDeliveryBtn');
+            if (!commandeId || !livreurId) {
+                message.className = 'alert alert-danger';
+                message.textContent = !livreurId ? 'Veuillez sélectionner un livreur.' : 'Commande invalide.';
+                return;
+            }
+            button.disabled = true;
+            try {
+                const response = await fetch('../models/traitement/commandes-post.php', {
+                    method: 'POST', headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({action: 'assign_delivery', id: commandeId, livreur_id: livreurId})
+                });
+                const responseText = await response.text();
+                let result;
+                try {
+                    result = JSON.parse(responseText);
+                } catch (parseError) {
+                    throw new Error('Le serveur a retourné une réponse invalide. Consultez les erreurs PHP.');
+                }
+                if (!response.ok) throw new Error(result.message || 'Erreur serveur lors de l’assignation.');
+                if (!result.success) throw new Error(result.message || 'Assignation impossible.');
+                message.className = 'alert alert-success';
+                message.textContent = result.message;
+                setTimeout(() => location.reload(), 800);
+            } catch (error) {
+                message.className = 'alert alert-danger';
+                message.textContent = error.message;
+                button.disabled = false;
+            }
         }
 
         function confirmDelete(id, numero) {

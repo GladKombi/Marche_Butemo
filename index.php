@@ -2,6 +2,8 @@
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
+$registrationEmail = $_SESSION['registration_email'] ?? null;
+unset($_SESSION['registration_email']);
 
 /**
  * Page d'accueil dynamique - Marché Numérique de Butembo
@@ -988,6 +990,14 @@ function getInitials($nom, $prenom)
 
 <body>
 
+    <?php if ($registrationEmail): ?>
+        <div class="alert alert-success alert-dismissible fade show position-fixed start-50 translate-middle-x shadow" style="top:85px;z-index:1100;max-width:620px;width:calc(100% - 32px)" role="alert">
+            <i class="bi bi-check-circle-fill me-2"></i>
+            Compte créé. Votre email de connexion est <strong><?= htmlspecialchars($registrationEmail) ?></strong>. Conservez-le avec votre mot de passe.
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Fermer"></button>
+        </div>
+    <?php endif; ?>
+
     <!-- ================================ -->
     <!-- NAVBAR -->
     <!-- ================================ -->
@@ -1009,6 +1019,13 @@ function getInitials($nom, $prenom)
                             <i class="bi bi-cart3"></i> Articles: <span id="cartCount">0</span>
                         </a>
                     </li>
+                    <?php if (!empty($_SESSION['is_logged_in']) && ($_SESSION['user_type'] ?? '') === 'acheteur'): ?>
+                        <li class="nav-item">
+                            <a href="views/mes-commandes.php" class="btn btn-outline-success btn-sm rounded-pill px-3">
+                                <i class="bi bi-bag-check me-1"></i> Mes commandes
+                            </a>
+                        </li>
+                    <?php endif; ?>
                     <li class="nav-item">
                         <?php if (!empty($_SESSION['is_logged_in'])): ?>
                             <a href="<?= ($_SESSION['user_type'] ?? '') === 'acheteur' ? '#panierModal' : 'views/dashboard.php' ?>" class="btn btn-primary btn-sm rounded-pill px-4" <?= ($_SESSION['user_type'] ?? '') === 'acheteur' ? 'data-bs-toggle="modal" data-bs-target="#panierModal"' : '' ?>>
@@ -1017,6 +1034,7 @@ function getInitials($nom, $prenom)
                             <a href="models/logout.php" class="btn btn-outline-secondary btn-sm rounded-pill px-3 ms-1" title="Déconnexion"><i class="bi bi-box-arrow-right"></i></a>
                         <?php else: ?>
                             <a href="connexion.php" class="btn btn-primary btn-sm rounded-pill px-4">Connexion</a>
+                            <a href="inscription.php" class="btn btn-outline-success btn-sm rounded-pill px-3 ms-1">S’inscrire</a>
                         <?php endif; ?>
                     </li>
                 </ul>

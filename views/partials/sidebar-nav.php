@@ -22,8 +22,20 @@ $sidebarLink = static function ($href, $icon, $label, $section) use ($sidebarSec
         <?php $sidebarLink('produits.php', 'bi-box-seam', 'Produits', 'produits.php'); ?>
     <?php endif; ?>
 
-    <?php if (in_array($sidebarRole, ['admin', 'acheteur'], true)): ?>
+    <?php if (in_array($sidebarRole, ['admin', 'agriculteur'], true)): ?>
         <?php $sidebarLink('commandes.php', 'bi-cart3', 'Commandes', 'commandes.php'); ?>
+    <?php endif; ?>
+
+    <?php if ($sidebarRole === 'agriculteur'): ?>
+        <?php $sidebarLink('paiements.php', 'bi-wallet2', 'Paiements', 'paiements.php'); ?>
+    <?php endif; ?>
+
+    <?php if ($sidebarRole === 'acheteur'): ?>
+        <?php $sidebarLink('mes-commandes.php', 'bi-bag-check', 'Mes commandes', 'mes-commandes.php'); ?>
+    <?php endif; ?>
+
+    <?php if ($sidebarRole === 'livreur'): ?>
+        <?php $sidebarLink('livraisons.php', 'bi-truck', 'Mes livraisons', 'livraisons.php'); ?>
     <?php endif; ?>
 
     <?php if ($sidebarRole === 'admin'): ?>

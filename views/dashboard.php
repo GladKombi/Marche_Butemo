@@ -83,13 +83,18 @@ try {
         $evolutionVentes = class_exists('CommandeSelect') ? CommandeSelect::getDailyStats(7) : [];
     } elseif ($user_type === 'agriculteur') {
         $agriculteur_id = $user_id;
-        $produits = class_exists('ProduitSelect') ? ProduitSelect::getByAgriculteur($agriculteur_id) : [];
+        $produits = class_exists('ProduitSelect') ? ProduitSelect::getByUtilisateurAgriculteur($user_id) : [];
+        $commandesAgriculteur = class_exists('CommandeSelect') ? CommandeSelect::getByAgriculteur($user_id) : [];
+        $revenuAgriculteur = 0;
+        foreach ($commandesAgriculteur as $commandeAgriculteur) {
+            $revenuAgriculteur += (float) ($commandeAgriculteur->montant_agriculteur ?? 0);
+        }
         $statsGlobales = [
             'total_products' => count($produits),
-            'total_orders' => 0,
-            'total_revenue' => 0
+            'total_orders' => count($commandesAgriculteur),
+            'total_revenue' => $revenuAgriculteur
         ];
-        $dernieresCommandes = [];
+        $dernieresCommandes = array_slice($commandesAgriculteur, 0, 10);
         $alertesStock = class_exists('ProduitSelect') ? ProduitSelect::getStockAlertByAgriculteur($agriculteur_id, 10) : [];
         $evolutionVentes = [];
     } elseif ($user_type === 'livreur') {

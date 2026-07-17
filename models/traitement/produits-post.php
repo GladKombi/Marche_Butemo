@@ -1,7 +1,7 @@
 <?php
 if (session_status() === PHP_SESSION_NONE) session_start();
 header('Content-Type: application/json; charset=utf-8');
-if (empty($_SESSION['is_logged_in']) || ($_SESSION['user_type'] ?? '') !== 'admin') {
+if (empty($_SESSION['is_logged_in']) || !in_array($_SESSION['user_type'] ?? '', ['admin', 'agriculteur'], true)) {
     http_response_code(403); echo json_encode(['success' => false, 'message' => 'Accès non autorisé']); exit;
 }
 require_once __DIR__ . '/../../config/database.php';
@@ -42,6 +42,10 @@ $action = $data['action'] ?? '';
 if ($action === 'delete') {
     $id = filter_var($data['id'] ?? null, FILTER_VALIDATE_INT);
     if (!$id) productResponse(false, 'Produit invalide.');
+    if (($_SESSION['user_type'] ?? '') === 'agriculteur') {
+        $owned = fetchOne('SELECT p.id FROM produits p JOIN agriculteurs a ON a.id = p.agriculteur_id WHERE p.id = :produit AND a.utilisateur_id = :utilisateur AND p.supprime = 0', [':produit' => $id, ':utilisateur' => $_SESSION['user_id']]);
+        if (!$owned) productResponse(false, 'Vous ne pouvez supprimer que vos propres produits.');
+    }
     $ok = ProduitTraitement::delete($id); productResponse($ok, $ok ? 'Produit supprimé avec succès.' : 'Erreur lors de la suppression.');
 }
 if (!in_array($action, ['create', 'update'], true)) productResponse(false, 'Action non reconnue.');
@@ -63,7 +67,13 @@ if (!in_array($data['unite_mesure'], ['kg', 'g', 'tonne', 'piece', 'douzaine', '
 if (!is_numeric($data['prix_unitaire']) || (float) $data['prix_unitaire'] < 0) productResponse(false, 'Prix invalide.');
 if (!is_numeric($data['quantite_stock'] ?? 0) || (float) ($data['quantite_stock'] ?? 0) < 0) productResponse(false, 'Stock invalide.');
 $farmerSelection = (int) $data['agriculteur_id'];
-if ($farmerSelection > 0) {
+if (($_SESSION['user_type'] ?? '') === 'agriculteur') {
+    $farmer = fetchOne('SELECT id FROM agriculteurs WHERE utilisateur_id = :id AND supprime = 0', [':id' => $_SESSION['user_id']]);
+    if (!$farmer) {
+        $farmerId = executeInsert('INSERT INTO agriculteurs (utilisateur_id, supprime) VALUES (:id, 0)', [':id' => $_SESSION['user_id']]);
+        $farmer = $farmerId ? (object) ['id' => $farmerId] : null;
+    }
+} elseif ($farmerSelection > 0) {
     $farmer = fetchOne('SELECT id FROM agriculteurs WHERE id = :id AND supprime = 0', [':id' => $farmerSelection]);
 } else {
     $farmerUserId = abs($farmerSelection);
@@ -99,4 +109,8 @@ if ($action === 'create') {
 }
 $id = filter_var($data['id'] ?? null, FILTER_VALIDATE_INT);
 if (!$id) productResponse(false, 'Produit invalide.');
+if (($_SESSION['user_type'] ?? '') === 'agriculteur') {
+    $owned = fetchOne('SELECT id FROM produits WHERE id = :id AND agriculteur_id = :agriculteur AND supprime = 0', [':id' => $id, ':agriculteur' => $farmer->id]);
+    if (!$owned) productResponse(false, 'Vous ne pouvez modifier que vos propres produits.');
+}
 $ok = ProduitTraitement::update($id, $product); productResponse($ok, $ok ? 'Produit modifié avec succès.' : 'Erreur lors de la modification.');
