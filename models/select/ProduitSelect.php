@@ -155,6 +155,7 @@ class ProduitSelect
                     c.nom as categorie_nom,
                     u.nom as agriculteur_nom,
                     u.prenom as agriculteur_prenom,
+                    u.id as agriculteur_utilisateur_id,
                     COUNT(lc.id) as nb_commandes,
                     SUM(lc.quantite) as quantite_vendue
                 FROM produits p

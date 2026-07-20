@@ -43,3 +43,10 @@ $sidebarLink = static function ($href, $icon, $label, $section) use ($sidebarSec
         <?php $sidebarLink('utilisateurs.php', 'bi-people', 'Utilisateurs', 'utilisateurs.php'); ?>
     <?php endif; ?>
 </nav>
+
+<?php
+// Le chat est disponible uniquement entre acheteurs et agriculteurs.
+if (in_array($sidebarRole, ['acheteur', 'agriculteur'], true)) {
+    require __DIR__ . '/chat-widget.php';
+}
+?>

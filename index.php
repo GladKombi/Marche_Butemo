@@ -659,6 +659,25 @@ function getInitials($nom, $prenom)
             transition: all 0.25s ease;
         }
 
+        .product-actions {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+            margin-top: 10px;
+        }
+
+        .product-actions .btn {
+            border-radius: 50px;
+            padding: 8px 6px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+
+        .product-actions .btn-add {
+            margin-top: 0;
+        }
+
         /* ===== TESTIMONIALS ===== */
         .testimonial-card {
             background: #fff;
@@ -1193,6 +1212,7 @@ function getInitials($nom, $prenom)
                                 <div class="product-rating">
                                     <?= renderStars($produit->note_moyenne ?? 4.5, $produit->nb_avis ?? 0) ?>
                                 </div>
+                                <div class="product-actions">
                                 <button class="btn btn-success btn-add"
                                     data-produit-id="<?= (int) ($produit->id ?? 0) ?>"
                                     data-nom="<?= htmlspecialchars($produit->nom ?? '', ENT_QUOTES) ?>"
@@ -1201,6 +1221,13 @@ function getInitials($nom, $prenom)
                                     data-unite="<?= htmlspecialchars($produit->unite_mesure ?? 'unité', ENT_QUOTES) ?>">
                                     <i class="bi bi-plus-circle me-1"></i> Ajouter
                                 </button>
+                                <button type="button" class="btn btn-outline-success btn-discuter"
+                                    data-produit-id="<?= (int) ($produit->id ?? 0) ?>"
+                                    data-agriculteur-id="<?= (int) ($produit->agriculteur_utilisateur_id ?? 0) ?>"
+                                    data-nom="<?= htmlspecialchars($produit->nom ?? '', ENT_QUOTES) ?>">
+                                    <i class="bi bi-chat-dots me-1"></i> Discuter
+                                </button>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -1466,12 +1493,30 @@ function getInitials($nom, $prenom)
         </div>
     </div>
 
+    <?php if (!empty($_SESSION['is_logged_in']) && ($_SESSION['user_type'] ?? '') === 'acheteur'): ?>
+        <?php $chatApiPath = 'models/traitement/chat-post.php'; require __DIR__ . '/views/partials/chat-widget.php'; ?>
+    <?php endif; ?>
+
     <!-- ================================ -->
     <!-- SCRIPTS -->
     <!-- ================================ -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 
     <script>
+        document.querySelectorAll('.btn-discuter').forEach(function(button) {
+            button.addEventListener('click', function() {
+                <?php if (empty($_SESSION['is_logged_in']) || ($_SESSION['user_type'] ?? '') !== 'acheteur'): ?>
+                    window.location.href = 'connexion.php';
+                <?php else: ?>
+                    window.openProductChat({
+                        farmerId: this.dataset.agriculteurId,
+                        name: this.dataset.nom,
+                        url: 'index.php?produit=' + encodeURIComponent(this.dataset.produitId) + '#produits'
+                    });
+                <?php endif; ?>
+            });
+        });
+
         // ============================================
         // GESTION DYNAMIQUE DU PANIER
         // ============================================
