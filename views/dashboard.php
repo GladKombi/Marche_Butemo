@@ -1172,6 +1172,7 @@ try {
                             </div>
                         </div>
                         <?php foreach ($alertesStock as $alerte): ?>
+                            <?php $alerte = (array) $alerte; ?>
                             <div class="alert-item">
                                 <div style="flex:1;">
                                     <div style="display:flex; justify-content:space-between; flex-wrap:wrap; gap:0.5rem;">
